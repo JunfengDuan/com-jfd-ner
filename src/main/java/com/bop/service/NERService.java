@@ -30,7 +30,7 @@ public class NERService {
 		this.jdbcTemplate = jdbcTemplate;
 	}
 
-	public BlockingDeque<Map> blockingDeque = new LinkedBlockingDeque<>(CAPACITY);
+	public BlockingDeque<Map> blockingDeque = new LinkedBlockingDeque<>(POOL_SIZE*CAPACITY);
 
 	public Map<String, Object> takeFromDeque() {
 		try {
@@ -44,7 +44,7 @@ public class NERService {
 
 	synchronized public void queryFromDB(AtomicInteger offset){
 		try {
-			String querySql = String.format(QUERY, offset, CAPACITY);
+			String querySql = String.format(QUERY, offset.get()+CAPACITY, offset);
 			logger.info("Query sql :{}",querySql);
 
 			List<Map<String, Object>>list = jdbcTemplate.queryForList(querySql);

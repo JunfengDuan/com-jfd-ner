@@ -32,16 +32,14 @@ import static com.bop.util.NerType.*;
 public class SegmentJob implements Runnable{
 
     private static final Logger logger = LoggerFactory.getLogger(SegmentJob.class);
-    private AtomicInteger offset = new AtomicInteger(1);
+    public AtomicInteger offset = new AtomicInteger(0);
     private final NERService nerService;
-    private final StanfordCoreNLP pipeline;
     private final CRFClassifier<CoreLabel> segment;
     private final AbstractSequenceClassifier<CoreLabel> ner;
 
     @Autowired
-    public SegmentJob(NERService nerService, StanfordCoreNLP pipeline, CRFClassifier<CoreLabel> segment, AbstractSequenceClassifier<CoreLabel> ner) {
+    public SegmentJob(NERService nerService, CRFClassifier<CoreLabel> segment, AbstractSequenceClassifier<CoreLabel> ner) {
         this.nerService = nerService;
-        this.pipeline = pipeline;
         this.segment = segment;
         this.ner = ner;
     }
@@ -50,6 +48,7 @@ public class SegmentJob implements Runnable{
     public void run() {
         try {
             while (true){
+
                 if(nerService.blockingDeque.size() < TAKE_SIZE) {
                     nerService.queryFromDB(offset);
                     offset.set(offset.get()+CAPACITY);
@@ -63,8 +62,6 @@ public class SegmentJob implements Runnable{
             }
         } catch (InterruptedException e) {
             logger.error("SegmentJob exception: {}",e.getMessage());
-        } finally {
-            logger.info("Job stopped");
         }
     }
 

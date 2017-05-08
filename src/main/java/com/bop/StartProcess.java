@@ -48,18 +48,16 @@ public class StartProcess implements CommandLineRunner{
     @Override
     public void run(String... strings) throws Exception {
         logger.info("NER process run");
-        SegmentJob segmentJob = new SegmentJob(nerService, null, segment, ner);
-        logger.info("StartProcess Init OK");
 
         executorService = Executors.newFixedThreadPool(POOL_SIZE);
-        IntStream.range(0, POOL_SIZE).forEach(n -> executorService.execute(segmentJob));
+        IntStream.range(0, POOL_SIZE).forEach(n -> executorService.execute(new SegmentJob(nerService, segment, ner)));
 
     }
 
     @PreDestroy
     public void shutDown(){
         logger.info("SegmentJob is topping");
-        executorService.isShutdown();
+        executorService.shutdown();
         logger.info("NER process stopped");
     }
 
