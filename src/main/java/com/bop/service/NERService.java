@@ -30,8 +30,11 @@ public class NERService {
 	public List queryList(){
 
 		List<Map<String, Object>> list = null;
+
 		try {
-			list = jdbcTemplate.queryForList(QUERY);
+			String querySql = String.format(QUERY, 0, 100);
+			logger.info("Query sql :{}",querySql);
+			list = jdbcTemplate.queryForList(querySql);
 		} catch (DataAccessException e) {
 			logger.error("Database connect exception:{}",e.getMessage());
 		}

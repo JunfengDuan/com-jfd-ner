@@ -13,7 +13,7 @@ public interface NerType {
 
     String REGEX = "<.*?>([^a-zA-Z]+)</.*?>";
 
-    String QUERY = "select AJNAME from GASJ01";
+    String QUERY = "select AJNAME from GASJ01 order by AJNAME offset %s ROWS FETCH NEXT %s ROWS ONLY";
 
     String SAVE = "insert into N_GASJ01 (text,organization,person,other) values (%s)";
 
