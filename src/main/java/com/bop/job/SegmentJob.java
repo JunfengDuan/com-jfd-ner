@@ -19,18 +19,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 
 import static com.bop.util.NerType.*;
 
 /**
  * Created by jfd on 5/3/17.
  */
-public class SegmentJob {
+public class SegmentJob implements Runnable{
 
     private static final Logger logger = LoggerFactory.getLogger(SegmentJob.class);
-
+    private AtomicInteger offset = new AtomicInteger(1);
     private final NERService nerService;
     private final StanfordCoreNLP pipeline;
     private final CRFClassifier<CoreLabel> segment;
@@ -44,18 +46,58 @@ public class SegmentJob {
         this.ner = ner;
     }
 
+    @Override
+    public void run() {
+        try {
+            while (true){
+                if(nerService.blockingDeque.size() < TAKE_SIZE) {
+                    nerService.queryFromDB(offset);
+                    offset.set(offset.get()+CAPACITY);
+                }
+                if(nerService.blockingDeque.size()==0){
+                    logger.warn("Nothing grabbed from database,thread is sleeping for 5 seconds");
+                    Thread.sleep(5000);
+                    continue;
+                }
+                startJob();
+            }
+        } catch (InterruptedException e) {
+            logger.error("SegmentJob exception: {}",e.getMessage());
+        } finally {
+            logger.info("Job stopped");
+        }
+    }
+
+    private void startJob() {
+        logger.info("Start a new job");
+        List<Map<String, Object>> list = new ArrayList<>();
+
+        IntStream.range(0, TAKE_SIZE).mapToObj(n -> nerService.takeFromDeque()).forEach(list :: add);
+
+        list.forEach(map -> map.entrySet().forEach(entry ->logger.info("\n{} : {}",entry.getKey(),entry.getValue())));
+
+        List<String> eventNames = getEventName(list);
+        eventNames.forEach(text ->doNlp(text));
+    }
+
+    private List<String> getEventName(List<Map<String, Object>> list){
+
+        List<String> names = new ArrayList<>();
+
+        list.forEach(map -> map.values().forEach(value -> names.add((String) value)));
+
+        return names;
+    }
+
     public void doNlp(String text) {
 
        String segString = doSegment(text);
-
         Map result = doNer(segString);
 
         Map<String,Object> segments = new HashMap<>();
-
         segments.put(text, result);
 
         nerService.saveResults(segments);
-
     }
 
     public String doSegment(String sent) {
@@ -111,5 +153,6 @@ public class SegmentJob {
             e.printStackTrace();
         }
     }
+
 
 }

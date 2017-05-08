@@ -1,7 +1,11 @@
 package com.bop.service;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
@@ -19,7 +23,6 @@ import static com.bop.util.NerType.*;
 public class NERService {
 
 	private static final Logger logger = LoggerFactory.getLogger(NERService.class);
-
 	JdbcTemplate jdbcTemplate;
 
 	@Autowired
@@ -27,18 +30,28 @@ public class NERService {
 		this.jdbcTemplate = jdbcTemplate;
 	}
 
-	public List queryList(){
+	public BlockingDeque<Map> blockingDeque = new LinkedBlockingDeque<>(CAPACITY);
 
-		List<Map<String, Object>> list = null;
-
+	public Map<String, Object> takeFromDeque() {
 		try {
-			String querySql = String.format(QUERY, 0, 100);
+			return blockingDeque.take();
+
+		} catch (InterruptedException e) {
+			logger.error("Take message from deque error:{}", e.getMessage());
+			return  new HashMap<>();
+		}
+	}
+
+	synchronized public void queryFromDB(AtomicInteger offset){
+		try {
+			String querySql = String.format(QUERY, offset, CAPACITY);
 			logger.info("Query sql :{}",querySql);
-			list = jdbcTemplate.queryForList(querySql);
+
+			List<Map<String, Object>>list = jdbcTemplate.queryForList(querySql);
+			blockingDeque.addAll(list);
 		} catch (DataAccessException e) {
 			logger.error("Database connect exception:{}",e.getMessage());
 		}
-		return list;
 	}
 
 	public void saveResults(Map<String,Object> segments){
@@ -53,6 +66,8 @@ public class NERService {
 	}
 
 	private void saveToDB(String text, Map<String,Object> map){
+		if(StringUtils.isBlank(text))
+			return;
 
 		String org = (String) map.get(ORGANIZATION);
 		String per = (String) map.get(PERSON);

@@ -13,10 +13,21 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.PreDestroy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+import static com.bop.util.NerType.CAPACITY;
+import static com.bop.util.NerType.POOL_SIZE;
+import static com.bop.util.NerType.TAKE_SIZE;
 
 /**
  * Created by jfd on 5/3/17.
@@ -29,36 +40,28 @@ public class StartProcess implements CommandLineRunner{
     private static CRFClassifier<CoreLabel> segment = CoreNLPUtil.getSegment();
 
     private static AbstractSequenceClassifier<CoreLabel> ner = CoreNLPUtil.getNer();
+    private ExecutorService executorService;
 
     @Autowired
     private NERService nerService;
 
     @Override
     public void run(String... strings) throws Exception {
-        logger.info("StartProcess run");
-
+        logger.info("NER process run");
         SegmentJob segmentJob = new SegmentJob(nerService, null, segment, ner);
+        logger.info("StartProcess Init OK");
 
-        List<Map<String, Object>> list = nerService.queryList();
-
-        list.forEach(map -> map.entrySet().forEach(entry ->logger.info("\n{} : {}",entry.getKey(),entry.getValue())));
-
-        List<String> eventNames = getEventName(list);
-
-        eventNames.forEach(text ->segmentJob.doNlp(text));
-
-//        segmentJob.doNlp("北京酷宝汽车装饰有限公司的董事长刘洋的出售的装饰材料不符合国家标准");
-
-        logger.info("StartProcess end");
+        executorService = Executors.newFixedThreadPool(POOL_SIZE);
+        IntStream.range(0, POOL_SIZE).forEach(n -> executorService.execute(segmentJob));
 
     }
 
-    private List<String> getEventName(List<Map<String, Object>> list){
-
-        List<String> names = new ArrayList<>();
-
-        list.forEach(map -> map.values().forEach(value -> names.add((String) value)));
-
-        return names;
+    @PreDestroy
+    public void shutDown(){
+        logger.info("SegmentJob is topping");
+        executorService.isShutdown();
+        logger.info("NER process stopped");
     }
+
+
 }
