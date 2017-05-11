@@ -13,6 +13,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -29,10 +30,14 @@ public class NERService {
 	public void setJdbcTemplate(JdbcTemplate jdbcTemplate) {
 		this.jdbcTemplate = jdbcTemplate;
 	}
+	@Value("${sourceTableName:tbl_case_simple_basic}")
+	private String sourceTableName;
+	@Value("${sourceFieldName:name}")
+	private String sourceFieldName;
+	@Value("${targetTableName:N_FAZHI}")
+	private String targetTableName;
 
-	public BlockingDeque<Map> blockingDeque = new LinkedBlockingDeque<>(POOL_SIZE*CAPACITY);
-
-	public Map<String, Object> takeFromDeque() {
+	public Map<String, Object> takeFromDeque(BlockingDeque<Map> blockingDeque) {
 		try {
 			return blockingDeque.take();
 
@@ -42,9 +47,9 @@ public class NERService {
 		}
 	}
 
-	synchronized public void queryFromDB(AtomicInteger offset){
+	public void queryFromDB(AtomicInteger offset, BlockingDeque<Map> blockingDeque, int capacity){
 		try {
-			String querySql = String.format(QUERY, offset.get()+CAPACITY, offset);
+			String querySql = String.format(QUERY, sourceFieldName,sourceFieldName,sourceTableName,offset.get()+capacity, offset);
 			logger.info("Query sql :{}",querySql);
 
 			List<Map<String, Object>>list = jdbcTemplate.queryForList(querySql);
@@ -54,44 +59,33 @@ public class NERService {
 		}
 	}
 
-	public void saveResults(Map<String,Object> segments){
+	public void saveResults(String id, Map<String,Object> segments){
 
 		segments.entrySet().forEach(e -> {
 			Map<String,Object> values = (Map<String,Object>) e.getValue();
 			values.entrySet().forEach(entry ->logger.info("\n{} : {}-{}",e.getKey(),entry.getValue(),entry.getKey()));
 
-			saveToDB(e.getKey(), values);
+			saveToDB(id, e.getKey(), values);
 		});
 
 	}
 
-	private void saveToDB(String text, Map<String,Object> map){
+	private void saveToDB(String id, String text, Map<String,Object> map){
 		if(StringUtils.isBlank(text))
 			return;
 
-		String org = (String) map.get(ORGANIZATION);
-		String per = (String) map.get(PERSON);
+		String org = map.get(ORGANIZATION) == null ? "" : (String) map.get(ORGANIZATION);
+		String per = map.get(PERSON) == null ? "" : (String) map.get(PERSON);
 		JSONArray other = JSONArray.parseArray((String) map.get(O));
-		String jsonString = other.size()==0 ? null : other.toString();
+		String jsonString = other.size()==0 ? "" : other.toString();
 
-//		String state = isSuccess(org, per);
-
-		String value = "'"+text + "','" + org + "','" + per + "','" + jsonString + "'";
-		String sql = String.format(SAVE, value);
+		String value = "'"+id+ "','" +text+ "','" +org+ "','" +per+ "','" +jsonString+ "'";
+		String sql = String.format(SAVE, targetTableName, value);
 
 		logger.info("Save sql :{}",sql);
 
 		jdbcTemplate.execute(sql);
 
-	}
-
-	private String isSuccess(String org, String per){
-
-		if(StringUtils.isBlank(org) || StringUtils.isBlank(per)){
-			return "fail";
-		}else {
-			return "success";
-		}
 	}
 
 }

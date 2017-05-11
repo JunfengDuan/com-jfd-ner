@@ -31,6 +31,9 @@ public class ApplicationTests {
 
 
 	}
+	public ApplicationTests(){
+
+	}
 
 	/*public static void main(String[] args){
 		String s = "<ORGANIZATION>北京 酷宝 汽车 装饰 有限公司</ORGANIZATION>";
@@ -54,11 +57,13 @@ public class ApplicationTests {
 
 		System.out.println(map);*/
 
-		String sql = "select AJNAME from GASJ01 where rownum <= 10";
+//		String sql = "select AJNAME from GASJ01 where rownum <= 10";
 
 //		List list = jdbcTemplate.queryForList(sql);
 
 //		System.out.println(list);
+
+
 
 	}
 

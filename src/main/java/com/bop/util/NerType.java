@@ -14,15 +14,22 @@ public interface NerType {
     String REGEX = "<.*?>([^a-zA-Z]+)</.*?>";
 
 //    String QUERY = "select AJNAME from GASJ01 order by AJNAME offset %s ROWS FETCH NEXT %s ROWS ONLY";
-    String QUERY = "select name from (select rownum rn, name from tbl_case_simple_basic where rownum<= %s order by id " +
-        ") where rn > %s";
+    String QUERY = "select id,%s from (select rownum rn, id, %s from %s " +
+        "where rownum<= %s order by id ) where rn > %s";
 
-    String SAVE = "insert into N_GASJ01 (text,organization,person,other) values (%s)";
+    String SAVE = "insert into %s (id,name,organization,person,others) values (%s)";
 
-    int CAPACITY = 1000;
+    String THREAD_NAME_FORMAT = "ner-thread-%d";
 
-    int TAKE_SIZE = 200;
 
-    int POOL_SIZE = 4;
+    /**
+     * 误报率(假阳性)
+     */
+    String FP = "select organization from N_FAZHI not in (select org_name from org01)";
+
+    /**
+     *漏报率(假阴性)
+     */
+    String FN = "select count(*) from N_FAZHI where organization is null and person is null and length(name)>4";
 
 }

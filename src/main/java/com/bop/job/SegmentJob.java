@@ -17,8 +17,11 @@ import org.dom4j.io.SAXReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringApplication;
 
 import java.util.*;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -32,36 +35,45 @@ import static com.bop.util.NerType.*;
 public class SegmentJob implements Runnable{
 
     private static final Logger logger = LoggerFactory.getLogger(SegmentJob.class);
-    public AtomicInteger offset = new AtomicInteger(0);
     private final NERService nerService;
     private final CRFClassifier<CoreLabel> segment;
     private final AbstractSequenceClassifier<CoreLabel> ner;
+    private AtomicInteger offset = new AtomicInteger(0);
+    private BlockingDeque<Map> blockingDeque;
+    private int capacity;
+    private int takeSize;
 
-    @Autowired
-    public SegmentJob(NERService nerService, CRFClassifier<CoreLabel> segment, AbstractSequenceClassifier<CoreLabel> ner) {
+    public SegmentJob(NERService nerService, CRFClassifier<CoreLabel> segment, AbstractSequenceClassifier<CoreLabel> ner, 
+                      BlockingDeque<Map> blockingDeque, int capacity, int takeSize) {
         this.nerService = nerService;
         this.segment = segment;
         this.ner = ner;
+        this.blockingDeque = blockingDeque;
+        this.capacity = capacity;
+        this.takeSize = takeSize;
     }
 
     @Override
     public void run() {
         try {
             while (true){
-
-                if(nerService.blockingDeque.size() < TAKE_SIZE) {
-                    nerService.queryFromDB(offset);
-                    offset.set(offset.get()+CAPACITY);
+                logger.info("BlockingDeque init size:{}",blockingDeque.size());
+                if(blockingDeque.size() < takeSize) {
+                    nerService.queryFromDB(offset, blockingDeque, capacity);
+                    offset.set(offset.get()+capacity);
                 }
-                if(nerService.blockingDeque.size()==0){
+                logger.info("BlockingDeque size:{}",blockingDeque.size());
+                if(blockingDeque.isEmpty()){
                     logger.warn("Nothing grabbed from database,thread is sleeping for 5 seconds");
-                    Thread.sleep(5000);
-                    continue;
+                    break;
                 }
                 startJob();
             }
-        } catch (InterruptedException e) {
+        } catch (Exception e) {
             logger.error("SegmentJob exception: {}",e.getMessage());
+        }finally {
+            logger.warn("SegmentJob is exiting...");
+            return;
         }
     }
 
@@ -69,24 +81,29 @@ public class SegmentJob implements Runnable{
         logger.info("Start a new job");
         List<Map<String, Object>> list = new ArrayList<>();
 
-        IntStream.range(0, TAKE_SIZE).mapToObj(n -> nerService.takeFromDeque()).forEach(list :: add);
+        IntStream.range(0, takeSize).mapToObj(n -> nerService.takeFromDeque(blockingDeque)).forEach(list :: add);
 
         list.forEach(map -> map.entrySet().forEach(entry ->logger.info("\n{} : {}",entry.getKey(),entry.getValue())));
 
-        List<String> eventNames = getEventName(list);
-        eventNames.forEach(text ->doNlp(text));
+        List<Map<String,String>> eventNames = getEventName(list);
+        eventNames.forEach(text -> text.entrySet().forEach(entry ->doNlp(entry.getKey(),entry.getValue())));
     }
 
-    private List<String> getEventName(List<Map<String, Object>> list){
+    private List<Map<String,String>> getEventName(List<Map<String, Object>> list){
 
-        List<String> names = new ArrayList<>();
+        List<Map<String,String>> events = new ArrayList<>();
 
-        list.forEach(map -> map.values().forEach(value -> names.add((String) value)));
+        list.forEach(l -> {
+            Map<String,String> newMap = new HashMap<>();
+            Object[] values = l.values().toArray();
+            newMap.put(String.valueOf(values[0]),String.valueOf(values[1]));
+            events.add(newMap);
+        });
 
-        return names;
+        return events;
     }
 
-    public void doNlp(String text) {
+    public void doNlp(String id, String text) {
 
        String segString = doSegment(text);
         Map result = doNer(segString);
@@ -94,13 +111,12 @@ public class SegmentJob implements Runnable{
         Map<String,Object> segments = new HashMap<>();
         segments.put(text, result);
 
-        nerService.saveResults(segments);
+        nerService.saveResults(id, segments);
     }
 
     public String doSegment(String sent) {
 
         List<String> strings = segment.segmentString(sent);
-
         String segmentString = StringUtils.join(strings, " ");
 
         logger.info("segmented res :{}",segmentString);
